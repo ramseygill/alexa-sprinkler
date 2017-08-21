@@ -4,6 +4,9 @@ ASC: Alexa Sprinkler Controller, an open source/hardware Arduino/ESP8266 based s
 # Home Page
 https://hackaday.io/project/26850-asc-alexa-sprinkler-controller
 
+# Functionality So Far
+https://youtu.be/E-7mcnQzFVI
+
 # Eventual Features
 * Amazon Alexa voice control.
 * OLED screen.
