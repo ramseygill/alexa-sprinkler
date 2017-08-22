@@ -14,8 +14,10 @@
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
+#include "SSD1306.h" // SSD1306
 
  //CONSTANTS/VARIABLES/GLOBALS-------------------------------------------------------------
+SSD1306  display(0x3c, D3, D5); // SSD1306 Pin Assignments
 MDNSResponder mdns;
 
 ESP8266WebServer server(80);              //server port
@@ -30,25 +32,29 @@ const int k3Pin = 2;  //ESP-12E D4
 const int k4Pin = 12; //ESP-12E D6
 const int k5Pin = 13; //ESP-12E D7
 const int k6Pin = 16; //ESP-12E D8
-const int k7Pin = 0;  //ESP-12E D3
-const int k8Pin = 14; //ESP-12E D5
-//can't program if i use GPIO 12 (D6)
-//GPIO 1 and GPIO 3 USB programmer TX/RX
-//Strange behavior if I use GPIO 15(D8) on relay board, unable to program MCU
+//const int k7Pin = 0;  //ESP-12E D3
+//const int k8Pin = 14; //ESP-12E D5
 //Wire SDA on OLED to D3 (GPIO0) pin on ESP-12E (used for SSD1306 OLED)
 //Wire SCL on OLED to D5 (GPIO14) pin on ESP-12E (used for SSD1306 OLED)
+
+int relayState = 0;
 
  //SETUP-----------------------------------------------------------------------------------
 void setup() {
 
+  display.init(); //SSD12306 init
+  
+  display.flipScreenVertically(); //SSD12306
+  display.setFont(ArialMT_Plain_10); //SSD12306 set font
+  
   pinMode(k1Pin, OUTPUT);  // set relay pins as outputs
   pinMode(k2Pin, OUTPUT);  //
   pinMode(k3Pin, OUTPUT);  //
   pinMode(k4Pin, OUTPUT);  //
   pinMode(k5Pin, OUTPUT);  //
   pinMode(k6Pin, OUTPUT);  //
-  pinMode(k7Pin, OUTPUT);  //
-  pinMode(k8Pin, OUTPUT);  //
+  //pinMode(k7Pin, OUTPUT);  //
+  //pinMode(k8Pin, OUTPUT);  //
 
   digitalWrite(k1Pin, HIGH); // ensure that each pin defaults to HIGH (relay off)
   digitalWrite(k2Pin, HIGH); // these cheap blue relay modules use inverted logic 
@@ -56,8 +62,8 @@ void setup() {
   digitalWrite(k4Pin, HIGH);
   digitalWrite(k5Pin, HIGH);
   digitalWrite(k6Pin, HIGH);
-  digitalWrite(k7Pin, HIGH);
-  digitalWrite(k8Pin, HIGH);
+  //digitalWrite(k7Pin, HIGH);
+  //digitalWrite(k8Pin, HIGH);
 
 //Webpage Heading
   webPage += "<h1>ASC - Alexa Sprinkler Controller</h1>";
@@ -89,6 +95,7 @@ void setup() {
   webPage += "<p>Relay #6 ";
   webPage += "<a href=\"relay6On\"><button>ON</button></a>&nbsp;";
   webPage += "<a href=\"relay6Off\"><button>OFF</button></a></p>";
+/*
 //Relay 7 button objects
   webPage += "<p>Relay #7 ";
   webPage += "<a href=\"relay7On\"><button>ON</button></a>&nbsp;";
@@ -97,8 +104,8 @@ void setup() {
   webPage += "<p>Relay #8 ";
   webPage += "<a href=\"relay8On\"><button>ON</button></a>&nbsp;";
   webPage += "<a href=\"relay8Off\"><button>OFF</button></a></p>";
-  
-  Serial.begin(115200); //start UAB seral communication at 115200 baud
+ */
+  Serial.begin(115200); //start UART seral communication at 115200 baud
   delay(100);
  
   Serial.println(); 
@@ -214,18 +221,19 @@ void setup() {
     Serial.println("RELAY 6 OFF");
     delay(500); 
   });
+   /*
     //RELAY 7 ------------------------------------
     server.on("/relay7On", [](){
     server.send(200, "text/html", webPage);
     // Turn on RELAY
-    digitalWrite(k7Pin, LOW);
+    //digitalWrite(k7Pin, LOW);
     Serial.println("RELAY 7 ON");
     delay(500);
   });
   server.on("/relay7Off", [](){
     server.send(200, "text/html", webPage);
     //Turn off RELAY
-    digitalWrite(k7Pin, HIGH);
+    //digitalWrite(k7Pin, HIGH);
     Serial.println("RELAY 7 OFF");
     delay(500); 
   });
@@ -233,19 +241,20 @@ void setup() {
     server.on("/relay8On", [](){
     server.send(200, "text/html", webPage);
     // Turn on RELAY
-    digitalWrite(k8Pin, LOW);
+    //digitalWrite(k8Pin, LOW);
     Serial.println("RELAY 8 ON");
     delay(500);
   });
   server.on("/relay8Off", [](){
     server.send(200, "text/html", webPage);
     //Turn off RELAY
-    digitalWrite(k8Pin, HIGH);
+    //digitalWrite(k8Pin, HIGH);
     Serial.println("RELAY 8 OFF");
     delay(500); 
   });
+  */
       //ALL RELAYS ------------------------------------
-    server.on("/allOn", [](){
+    server.on("/allOn", [](){ //ON
     server.send(200, "text/html", webPage);
     // Turn on RELAY
       digitalWrite(k1Pin, LOW);
@@ -254,12 +263,15 @@ void setup() {
       digitalWrite(k4Pin, LOW);
       digitalWrite(k5Pin, LOW);
       digitalWrite(k6Pin, LOW);
-      digitalWrite(k7Pin, LOW);
-      digitalWrite(k8Pin, LOW);
+      //digitalWrite(k7Pin, LOW);
+      //digitalWrite(k8Pin, LOW);
       Serial.println("ALL ON");
-    delay(500);
+
+      relayState = 1; //set state for screen update
+      
+    delay(100);
   });
-  server.on("/allOff", [](){
+  server.on("/allOff", [](){ //OFF
     server.send(200, "text/html", webPage);
     //Turn off RELAY
       digitalWrite(k1Pin, HIGH);
@@ -268,17 +280,42 @@ void setup() {
       digitalWrite(k4Pin, HIGH);
       digitalWrite(k5Pin, HIGH);
       digitalWrite(k6Pin, HIGH);
-      digitalWrite(k7Pin, HIGH);
-      digitalWrite(k8Pin, HIGH);
+      //digitalWrite(k7Pin, HIGH);
+      //digitalWrite(k8Pin, HIGH);
       Serial.println("ALL OFF");
-    delay(500); 
+
+      relayState = 0; //set state for screen update
+      
+    delay(100); 
   });
 
   server.begin();
   Serial.println("HTTP server started");
 }
+ 
  //MAIN LOOP-------------------------------------------------------------------------------
 void loop() {
-  server.handleClient();
+  display.clear(); //wipe display our to refresh it
+  updateIP(); //function call for display update
+  server.handleClient(); //routine for webserver
+  delay(50); // loop governor
 }
 
+//FUNCTIONS--------------------------------------------------------------------------------
+void updateIP(){
+  String ipaddress = WiFi.localIP().toString(); // convert IP address array to string
+  //display.clear();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 0, "IP Address");
+  display.drawString(0, 15, (ipaddress));
+  
+  if(relayState == 1){
+    display.drawString(0, 30, "ALL ON");
+  }
+  else{
+    display.drawString(0, 30, "ALL OFF");
+}
+  display.display(); //write display buffer
+}
+//----------------------------------------------------------------------------------------
