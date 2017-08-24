@@ -5,6 +5,7 @@
  * Author: Ramsey Gill  
  * License MIT
  * Homepage: https://hackaday.io/project/26850-alexa-enabled-sprinkler-controller
+ * GitHub: https://github.com/ramseygill/alexa-sprinkler
  * ========================================================================================
  * NOTES
  * http://www.geekstips.com/arduino-time-sync-ntp-server-esp8266-udp/
@@ -26,12 +27,12 @@ const char* ssid     = "skynet-2GHz";     //wifi SSID
 const char* password = "haxor1337";       //wifi password
 
 //PIN DEFINITIONS
-const int k1Pin = 5;  //ESP-12E D1 RELAYS 1-8
-const int k2Pin = 4;  //ESP-12E D2
-const int k3Pin = 2;  //ESP-12E D4
-const int k4Pin = 12; //ESP-12E D6
-const int k5Pin = 13; //ESP-12E D7
-const int k6Pin = 16; //ESP-12E D8
+const int k1Pin = D0;  //ESP-12E D1 RELAYS 1-8
+const int k2Pin = D1;  //ESP-12E D2
+const int k3Pin = D2;  //ESP-12E D4
+const int k4Pin = D4; //ESP-12E D6
+const int k5Pin = D6; //ESP-12E D7
+const int k6Pin = D7; //ESP-12E D8
 //const int k7Pin = 0;  //ESP-12E D3
 //const int k8Pin = 14; //ESP-12E D5
 //Wire SDA on OLED to D3 (GPIO0) pin on ESP-12E (used for SSD1306 OLED)
@@ -295,7 +296,7 @@ void setup() {
  
  //MAIN LOOP-------------------------------------------------------------------------------
 void loop() {
-  display.clear(); //wipe display our to refresh it
+  display.clear(); //wipe display clean to refresh it
   updateIP(); //function call for display update
   server.handleClient(); //routine for webserver
   delay(50); // loop governor
