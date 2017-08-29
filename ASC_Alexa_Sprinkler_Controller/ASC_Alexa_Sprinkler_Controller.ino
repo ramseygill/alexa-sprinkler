@@ -20,7 +20,7 @@
 #include <ESP8266mDNS.h>
 #include "SSD1306.h" // SSD1306
 #include "Adafruit_MCP23017.h" //Adafruit-MCP23017-Arduino-Library
-#include "SparkFunTMP102.h" // Used to send and recieve specific information from our sensor
+#include "SparkFunTMP102.h" // Used to send and recieve specific information from temp sensor
 
  //CONSTANTS/VARIABLES/GLOBALS-------------------------------------------------------------
 const int ALERT_PIN = 5; //TMP102 alert pin
@@ -93,6 +93,7 @@ void setup() {
   mcp.pinMode(5, OUTPUT);
   mcp.pinMode(6, OUTPUT);
   mcp.pinMode(7, OUTPUT);
+  mcp.pinMode(8, OUTPUT);
 
 // ensure that each pin defaults to HIGH (relay off)
 // these cheap blue relay modules use active low logic.
@@ -104,12 +105,10 @@ void setup() {
   mcp.digitalWrite(5, HIGH); //K6
   mcp.digitalWrite(6, HIGH); //K7
   mcp.digitalWrite(7, HIGH); //K8
+  //mcp.digitalWrite(8, HIGH); MCP23017 GPB0 test
 
 //Webpage Heading
   webPage += "<h1>ASC - Alexa Sprinkler Controller</h1>";
-// Temp object
-webPage += "<p>Temp " ; //name of button
-
 //All on objects
   webPage += "<p>ALL RELAYS "; //name of button
   webPage += "<a href=\"allOn\"><button>ON</button></a>&nbsp;"; //on button object
@@ -171,8 +170,7 @@ webPage += "<p>Temp " ; //name of button
     Serial.println("MDNS responder started");
  
     server.on("/", [](){
-    server.send(200, "text/html", webPage);
-  });
+    server.send(200, "text 
   //RELAY 1 ------------------------------------
     server.on("/relay1On", [](){
     server.send(200, "text/html", webPage);
