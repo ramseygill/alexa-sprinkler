@@ -93,7 +93,7 @@ void setup() {
   mcp.pinMode(5, OUTPUT);
   mcp.pinMode(6, OUTPUT);
   mcp.pinMode(7, OUTPUT);
-  mcp.pinMode(8, OUTPUT);
+  //mcp.pinMode(8, OUTPUT); GPB0 test
 
 // ensure that each pin defaults to HIGH (relay off)
 // these cheap blue relay modules use active low logic.
@@ -105,7 +105,7 @@ void setup() {
   mcp.digitalWrite(5, HIGH); //K6
   mcp.digitalWrite(6, HIGH); //K7
   mcp.digitalWrite(7, HIGH); //K8
-  //mcp.digitalWrite(8, HIGH); MCP23017 GPB0 test
+  //mcp.digitalWrite(8, LOW); // GPB0 test
 
 //Webpage Heading
   webPage += "<h1>ASC - Alexa Sprinkler Controller</h1>";
@@ -169,8 +169,11 @@ void setup() {
   if (mdns.begin("esp8266", WiFi.localIP())) 
     Serial.println("MDNS responder started");
  
-    server.on("/", [](){
-    server.send(200, "text 
+  server.on("/", [](){
+    server.send(200, "text/html", webPage);
+  });
+
+
   //RELAY 1 ------------------------------------
     server.on("/relay1On", [](){
     server.send(200, "text/html", webPage);
