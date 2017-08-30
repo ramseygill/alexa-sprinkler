@@ -46,15 +46,24 @@ const int relayPin_K8 = 7;  //K8 relay control pin. MCP23017 Pin 28/GPA7
 #define SERIAL_BAUDRATE 115200  //Set USB serial baud rate
 
 // LIBRARY INITIALIZATION
+SSD1306  display(0x3c, I2C_SDA, I2C_SCL); // SSD1306 Pin Assignments
 fauxmoESP fauxmo;                         // Initialize fauxmo
 TMP102 sensor0(0x48);                     // Initialize sensor at I2C address 0x48
 Adafruit_MCP23017 mcp;                    // Adafruit-MCP23017-Arduino-Library
-SSD1306  display(0x3c, I2C_SDA, I2C_SCL); // SSD1306 Pin Assignments
+
 
 //------------------------------------------------------------------------------------------------
 //SETUP
 //------------------------------------------------------------------------------------------------
 void setup() {
+
+  //START I2C COMMUNICATION
+  display.init();   // SSD12306 - OLED screen start I2C comms
+  mcp.begin();      // MCP23017 - I/O Expander start I2C comms
+  sensor0.begin();  // TMP102 - Temp Sensor start I2C comms
+  
+  //Flip Screen orientation in software, (pins on top)
+  display.flipScreenVertically(); //SSD12306
 
   //CONFIGURE PIN USAGE
   pinMode(alertPin,INPUT);  // Declare alertPin as an input TMP102
@@ -68,8 +77,10 @@ void setup() {
   mcp.pinMode(relayPin_K7, OUTPUT);
   mcp.pinMode(relayPin_K8, OUTPUT);
 
-  //FAUXMO DEVICES  
-  //(each of these devices will appear in Alexa App
+  // FAUXMO DEVICES  
+  // Each of these devices will appear in Alexa App. 
+  // Create a group from these devices "Front Yeard Sprinklers"
+  // Each controller will have its own letter "A" followed by a zone "1"
   fauxmo.addDevice("Zone A1");
   fauxmo.addDevice("Zone A2");
   fauxmo.addDevice("Zone A3");
@@ -80,13 +91,7 @@ void setup() {
   fauxmo.addDevice("Zone A8");
   fauxmo.onMessage(callback); //function call?
 
-  //START I2C COMMUNICATION
-  mcp.begin();      // MCP23017 - I/O Expander start I2C comms
-  sensor0.begin();  // TMP102 - Temp Sensor start I2C comms
-  display.init();   // SSD12306 - OLED screen start I2C comms
-  //Flip Screen orientation in software, (pins on top)
-  display.flipScreenVertically(); //SSD12306
-
+  
 //------------TMP102 Setup----------------------------------------------------------
   // Initialize sensor0 settings
   // These settings are saved in the sensor, even if it loses power
@@ -126,6 +131,7 @@ void setup() {
   Serial.println("ALEXA Sprinkler Controller V1.0"); //vanity title for serial window
 //----------------------------------------------------------------------------------
 
+ wifiSetup();
 }
  
 //------------------------------------------------------------------------------------------------
