@@ -1,54 +1,93 @@
 /*
- * ========================================================================================
+ * ===============================================================================================
  * Title: ASC - Alexa Sprinkler Controller
- * Description: ESP8266 Based, Arduino compatible, Alexa commandable, sprinkler controller
+ * Description: ESP8266 Based, Arduino compatible, Alexa commandable, sprinkler controller. 
  * Author: Ramsey Gill  
  * License MIT
  * Homepage: https://hackaday.io/project/26850-alexa-enabled-sprinkler-controller
  * GitHub: https://github.com/ramseygill/alexa-sprinkler
- * ========================================================================================
+ * ===============================================================================================
  * NOTES, Credit, Sources, and Props
- * http://www.geekstips.com/arduino-time-sync-ntp-server-esp8266-udp/
+ * TIME EXAMPLE:http://www.geekstips.com/arduino-time-sync-ntp-server-esp8266-udp/
  * Adafruit-MCP23017-Arduino-Library
  * Copyright (c) 2012, Adafruit Industries All rights reserved.
  * https://github.com/adafruit/Adafruit-MCP23017-Arduino-Library/blob/master/license.txt
  */
- //LIBRARIES-------------------------------------------------------------------------------
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
-#include "SSD1306.h" // SSD1306
-#include "Adafruit_MCP23017.h" //Adafruit-MCP23017-Arduino-Library
-#include "SparkFunTMP102.h" // Used to send and recieve specific information from temp sensor
+//------------------------------------------------------------------------------------------------
+//LIBRARIES
+//------------------------------------------------------------------------------------------------
 
- //CONSTANTS/VARIABLES/GLOBALS-------------------------------------------------------------
-const int ALERT_PIN = 5; //TMP102 alert pin
-TMP102 sensor0(0x48); // Initialize sensor at I2C address 0x48
+#include <ESP8266WiFi.h>        // ESP8266 (ESP-12E) wifi library
+#include "SSD1306.h"            // SSD1306 OLED display 
+#include "Adafruit_MCP23017.h"  // Adafruit-MCP23017-Arduino-Library, GPIO EXPANDER
+#include "SparkFunTMP102.h"     // TMP102 I2C temperature sensor 
+#include "fauxmoESP.h"          // Alexa suppport (fake WeMo devices)
 
-Adafruit_MCP23017 mcp; //Adafruit-MCP23017-Arduino-Library
-SSD1306  display(0x3c, D3, D5); // SSD1306 Pin Assignments
-MDNSResponder mdns;
+//------------------------------------------------------------------------------------------------
+//VARIABLES AND GLOBALS
+//------------------------------------------------------------------------------------------------
 
-ESP8266WebServer server(80);              //server port
-String webPage;
-const char* ssid     = "skynet-2GHz";     //wifi SSID
-const char* password = "haxor1337";       //wifi password
+// PIN DEFINITIONS
+const int I2C_SDA = 0;      //I2C bus data pin (SCL).
+const int I2C_SCL = 14;     //I2C bus clock pin (SCL).
+const int alertPin = 5;     //TMP102 alert pin. ESP8266 Pin 
+const int relayPin_K1 = 0;  //K1 relay control pin. MCP23017 Pin 21/GPA0
+const int relayPin_K2 = 1;  //K2 relay control pin. MCP23017 Pin 22/GPA1
+const int relayPin_K3 = 2;  //K3 relay control pin. MCP23017 Pin 23/GPA2
+const int relayPin_K4 = 3;  //K4 relay control pin. MCP23017 Pin 24/GPA3
+const int relayPin_K5 = 4;  //K5 relay control pin. MCP23017 Pin 25/GPA4
+const int relayPin_K6 = 5;  //K6 relay control pin. MCP23017 Pin 26/GPA5
+const int relayPin_K7 = 6;  //K7 relay control pin. MCP23017 Pin 27/GPA6
+const int relayPin_K8 = 7;  //K8 relay control pin. MCP23017 Pin 28/GPA7
 
-//PIN DEFINITIONS
+// GLOBAL DEFS
+#define WIFI_SSID "skynet-2GHz" //your wifi SSID
+#define WIFI_PASS "haxor1337"   //your wifi password 
+#define SERIAL_BAUDRATE 115200  //Set USB serial baud rate
 
-//VARIABLES
-int relayState = 0;
+// LIBRARY INITIALIZATION
+fauxmoESP fauxmo;                         // Initialize fauxmo
+TMP102 sensor0(0x48);                     // Initialize sensor at I2C address 0x48
+Adafruit_MCP23017 mcp;                    // Adafruit-MCP23017-Arduino-Library
+SSD1306  display(0x3c, I2C_SDA, I2C_SCL); // SSD1306 Pin Assignments
 
- //SETUP-----------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------
+//SETUP
+//------------------------------------------------------------------------------------------------
 void setup() {
 
-  mcp.begin();      // use default address 0 Adafruit-MCP23017-Arduino-Library
+  //CONFIGURE PIN USAGE
+  pinMode(alertPin,INPUT);  // Declare alertPin as an input TMP102
+  //set PORT A I/O expander pins to OUTPUTS for relay use
+  mcp.pinMode(relayPin_K1, OUTPUT); 
+  mcp.pinMode(relayPin_K2, OUTPUT); 
+  mcp.pinMode(relayPin_K3, OUTPUT);
+  mcp.pinMode(relayPin_K4, OUTPUT);
+  mcp.pinMode(relayPin_K5, OUTPUT);
+  mcp.pinMode(relayPin_K6, OUTPUT);
+  mcp.pinMode(relayPin_K7, OUTPUT);
+  mcp.pinMode(relayPin_K8, OUTPUT);
 
-//------------TMP102----------------------------------------------------------
-  pinMode(ALERT_PIN,INPUT);  // Declare alertPin as an input TMP102
-  sensor0.begin();  // Join I2C bus TMP102
+  //FAUXMO DEVICES  
+  //(each of these devices will appear in Alexa App
+  fauxmo.addDevice("Zone A1");
+  fauxmo.addDevice("Zone A2");
+  fauxmo.addDevice("Zone A3");
+  fauxmo.addDevice("Zone A4");
+  fauxmo.addDevice("Zone A5");
+  fauxmo.addDevice("Zone A6");
+  fauxmo.addDevice("Zone A7");
+  fauxmo.addDevice("Zone A8");
+  fauxmo.onMessage(callback); //function call?
 
+  //START I2C COMMUNICATION
+  mcp.begin();      // MCP23017 - I/O Expander start I2C comms
+  sensor0.begin();  // TMP102 - Temp Sensor start I2C comms
+  display.init();   // SSD12306 - OLED screen start I2C comms
+  //Flip Screen orientation in software, (pins on top)
+  display.flipScreenVertically(); //SSD12306
+
+//------------TMP102 Setup----------------------------------------------------------
   // Initialize sensor0 settings
   // These settings are saved in the sensor, even if it loses power
   
@@ -77,297 +116,46 @@ void setup() {
   //set T_LOW, the lower limit to shut turn off the alert
   sensor0.setLowTempF(76.0);  // set T_LOW in F
   //sensor0.setLowTempC(26.67); // set T_LOW in C
-//------------TMP102----------------------------------------------------------
+//----------------------------------------------------------------------------------
 
-  display.init(); //SSD12306 init
-  
-  display.flipScreenVertically(); //SSD12306
-  display.setFont(ArialMT_Plain_10); //SSD12306 set font
 
-//set PORT A I/O expander pins to OUTPUTS
-  mcp.pinMode(0, OUTPUT); //MCP23017 PIN 21 GPA0 (K1 RELAY)
-  mcp.pinMode(1, OUTPUT); //MCP23017 PIN 22 GPA1 (K2 RELAY)
-  mcp.pinMode(2, OUTPUT);
-  mcp.pinMode(3, OUTPUT);
-  mcp.pinMode(4, OUTPUT);
-  mcp.pinMode(5, OUTPUT);
-  mcp.pinMode(6, OUTPUT);
-  mcp.pinMode(7, OUTPUT);
-  //mcp.pinMode(8, OUTPUT); GPB0 test
-
-// ensure that each pin defaults to HIGH (relay off)
-// these cheap blue relay modules use active low logic.
-  mcp.digitalWrite(0, HIGH); //K1
-  mcp.digitalWrite(1, HIGH); //K2
-  mcp.digitalWrite(2, HIGH); //K3
-  mcp.digitalWrite(3, HIGH); //K4
-  mcp.digitalWrite(4, HIGH); //K5
-  mcp.digitalWrite(5, HIGH); //K6
-  mcp.digitalWrite(6, HIGH); //K7
-  mcp.digitalWrite(7, HIGH); //K8
-  //mcp.digitalWrite(8, LOW); // GPB0 test
-
-//Webpage Heading
-  webPage += "<h1>ASC - Alexa Sprinkler Controller</h1>";
-//All on objects
-  webPage += "<p>ALL RELAYS "; //name of button
-  webPage += "<a href=\"allOn\"><button>ON</button></a>&nbsp;"; //on button object
-  webPage += "<a href=\"allOff\"><button>OFF</button></a></p>"; //off button object
-//Relay 1 button objects
-  webPage += "<p>Relay #1 ";
-  webPage += "<a href=\"relay1On\"><button>ON</button></a>&nbsp;";
-  webPage += "<a href=\"relay1Off\"><button>OFF</button></a></p>";
-//Relay 2 button objects
-  webPage += "<p>Relay #2 ";
-  webPage += "<a href=\"relay2On\"><button>ON</button></a>&nbsp;";
-  webPage += "<a href=\"relay2Off\"><button>OFF</button></a></p>";
-//Relay 3 button objects
-  webPage += "<p>Relay #3 ";
-  webPage += "<a href=\"relay3On\"><button>ON</button></a>&nbsp;";
-  webPage += "<a href=\"relay3Off\"><button>OFF</button></a></p>";
-//Relay 4 button objects
-  webPage += "<p>Relay #4 ";
-  webPage += "<a href=\"relay4On\"><button>ON</button></a>&nbsp;";
-  webPage += "<a href=\"relay4Off\"><button>OFF</button></a></p>";
-//Relay 5 button objects
-  webPage += "<p>Relay #5 ";
-  webPage += "<a href=\"relay5On\"><button>ON</button></a>&nbsp;";
-  webPage += "<a href=\"relay5Off\"><button>OFF</button></a></p>";
-//Relay 6 button objects
-  webPage += "<p>Relay #6 ";
-  webPage += "<a href=\"relay6On\"><button>ON</button></a>&nbsp;";
-  webPage += "<a href=\"relay6Off\"><button>OFF</button></a></p>";
-//Relay 7 button objects
-  webPage += "<p>Relay #7 ";
-  webPage += "<a href=\"relay7On\"><button>ON</button></a>&nbsp;";
-  webPage += "<a href=\"relay7Off\"><button>OFF</button></a></p>";
-//Relay 8 button objects
-  webPage += "<p>Relay #8 ";
-  webPage += "<a href=\"relay8On\"><button>ON</button></a>&nbsp;";
-  webPage += "<a href=\"relay8Off\"><button>OFF</button></a></p>";
-
-  Serial.begin(115200); //start UART seral communication at 115200 baud
-  delay(100);
- 
-  Serial.println(); 
+//------------USB Serial Comms Setup -----------------------------------------------
+  Serial.begin(SERIAL_BAUDRATE);                     //start UART seral comm at global deff baudrate
+  Serial.println();                                  // add two blank lines
   Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  
-  WiFi.begin(ssid, password);
-  
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
- 
-  Serial.println("");
-  Serial.println("WiFi connected");  
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  
-  if (mdns.begin("esp8266", WiFi.localIP())) 
-    Serial.println("MDNS responder started");
- 
-  server.on("/", [](){
-    server.send(200, "text/html", webPage);
-  });
+  Serial.println("ALEXA Sprinkler Controller V1.0"); //vanity title for serial window
+//----------------------------------------------------------------------------------
 
-
-  //RELAY 1 ------------------------------------
-    server.on("/relay1On", [](){
-    server.send(200, "text/html", webPage);
-    // Turn on RELAY
-    mcp.digitalWrite(0, LOW);
-    Serial.println("RELAY 1 ON");
-    delay(500);
-  });
-    server.on("/relay1Off", [](){
-    server.send(200, "text/html", webPage);
-    //Turn off RELAY
-    mcp.digitalWrite(0, HIGH);;
-    Serial.println("RELAY 1 OFF");
-    delay(500); 
-  });
-  //RELAY 2 ------------------------------------
-    server.on("/relay2On", [](){
-    server.send(200, "text/html", webPage);
-    // Turn on RELAY
-    mcp.digitalWrite(1, LOW);
-    Serial.println("RELAY 2 ON");
-    delay(500);
-  });
-    server.on("/relay2Off", [](){
-    server.send(200, "text/html", webPage);
-    //Turn off RELAY
-    mcp.digitalWrite(1, HIGH);
-    Serial.println("RELAY 2 OFF");
-    delay(500); 
-  });
-    //RELAY 3 ------------------------------------
-    server.on("/relay3On", [](){
-    server.send(200, "text/html", webPage);
-    // Turn on RELAY
-    mcp.digitalWrite(2, LOW);
-    Serial.println("RELAY 3 ON");
-    delay(500);
-  });
-    server.on("/relay3Off", [](){
-    server.send(200, "text/html", webPage);
-    //Turn off RELAY
-    mcp.digitalWrite(2, HIGH);
-    Serial.println("RELAY 3 OFF");
-    delay(500); 
-  });
-    //RELAY 4 ------------------------------------
-    server.on("/relay4On", [](){
-    server.send(200, "text/html", webPage);
-    // Turn on RELAY
-    mcp.digitalWrite(3, LOW);
-    Serial.println("RELAY 4 ON");
-    delay(500);
-  });
-  server.on("/relay4Off", [](){
-    server.send(200, "text/html", webPage);
-    //Turn off RELAY
-    mcp.digitalWrite(3, HIGH);
-    Serial.println("RELAY 4 OFF");
-    delay(500); 
-  });
-    //RELAY 5 ------------------------------------
-    server.on("/relay5On", [](){
-    server.send(200, "text/html", webPage);
-    // Turn on RELAY
-    mcp.digitalWrite(4, LOW);
-    Serial.println("RELAY 5 ON");
-    delay(500);
-  });
-  server.on("/relay5Off", [](){
-    server.send(200, "text/html", webPage);
-    //Turn off RELAY
-    mcp.digitalWrite(4, HIGH);
-    Serial.println("RELAY 5 OFF");
-    delay(500); 
-  });
-    //RELAY 6 ------------------------------------
-    server.on("/relay6On", [](){
-    server.send(200, "text/html", webPage);
-    // Turn on RELAY
-    mcp.digitalWrite(5, LOW);
-    Serial.println("RELAY 6 ON");
-    delay(500);
-  });
-  server.on("/relay6Off", [](){
-    server.send(200, "text/html", webPage);
-    //Turn off RELAY
-    mcp.digitalWrite(5, HIGH);
-    Serial.println("RELAY 6 OFF");
-    delay(500); 
-  });
-    //RELAY 7 ------------------------------------
-    server.on("/relay7On", [](){
-    server.send(200, "text/html", webPage);
-    // Turn on RELAY
-    mcp.digitalWrite(6, LOW);
-    Serial.println("RELAY 7 ON");
-    delay(500);
-  });
-  server.on("/relay7Off", [](){
-    server.send(200, "text/html", webPage);
-    //Turn off RELAY
-    mcp.digitalWrite(6, HIGH);
-    Serial.println("RELAY 7 OFF");
-    delay(500); 
-  });
-    //RELAY 8 ------------------------------------
-    server.on("/relay8On", [](){
-    server.send(200, "text/html", webPage);
-    // Turn on RELAY
-    mcp.digitalWrite(7, LOW);
-    Serial.println("RELAY 8 ON");
-    delay(500);
-  });
-  server.on("/relay8Off", [](){
-    server.send(200, "text/html", webPage);
-    //Turn off RELAY
-    mcp.digitalWrite(7, HIGH);
-    Serial.println("RELAY 8 OFF");
-    delay(500); 
-  });
-  
-      //ALL RELAYS ------------------------------------
-    server.on("/allOn", [](){ //ON
-    server.send(200, "text/html", webPage);
-    // Turn on RELAY
-    mcp.digitalWrite(0, LOW); //K1
-    mcp.digitalWrite(1, LOW);
-    mcp.digitalWrite(2, LOW);
-    mcp.digitalWrite(3, LOW);
-    mcp.digitalWrite(4, LOW);
-    mcp.digitalWrite(5, LOW);
-    mcp.digitalWrite(6, LOW);
-    mcp.digitalWrite(7, LOW);
-    
-      Serial.println("ALL ON");
-
-      relayState = 1; //set state for screen update
-      
-    delay(100);
-  });
-  
-  server.on("/allOff", [](){ //OFF
-    server.send(200, "text/html", webPage);
-    //Turn off RELAY
-    mcp.digitalWrite(0, HIGH);
-    mcp.digitalWrite(1, HIGH);
-    mcp.digitalWrite(2, HIGH);
-    mcp.digitalWrite(3, HIGH);
-    mcp.digitalWrite(4, HIGH);
-    mcp.digitalWrite(5, HIGH);
-    mcp.digitalWrite(6, HIGH);
-    mcp.digitalWrite(7, HIGH);
-    
-      Serial.println("ALL OFF");
-
-      relayState = 0; //set state for screen update
-      
-    delay(100); 
-  });
-
-  server.begin();
-  Serial.println("HTTP server started");
 }
  
- //MAIN LOOP-------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------
+//MAIN LOOP
+//------------------------------------------------------------------------------------------------
 void loop() {
-  display.clear(); //wipe display clean to refresh it
-  updateIP(); //function call for display update
-  updateTemp(); //fuction call for TMP102 temp 
-  display.display(); //write display buffer
-  server.handleClient(); //routine for webserver
-  delay(50); // loop governor
+  display.clear();     // wipe display clean to refresh it
+  updateIP();          // function call for display update
+  updateTemp();        // fuction call for TMP102 temp 
+  display.display();   // write display buffer
+  fauxmo.handle();     // call fauxmo device function
+  delay(10);           // loop governor, determine how fast this loop runs
 }
 
-//FUNCTIONS--------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------
+//FUNCTIONS
+//------------------------------------------------------------------------------------------------
+
+//UPDATE IP FUNCTION
+//------------------------------------------------------------------------------------------------
 void updateIP(){
   String ipaddress = WiFi.localIP().toString(); // convert IP address array to string
-  //display.clear();
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_16);
   display.drawString(0, 0, "IP Address");
   display.drawString(0, 15, (ipaddress));
+}
+//TEMP UPDATE FUNCTION (SHITSHOW CODE, BUT IT WORKS)
+//------------------------------------------------------------------------------------------------
 
-  /*
-  if(relayState == 1){
-    display.drawString(0, 30, "ALL ON");
-  }
-  else{
-    display.drawString(0, 30, "ALL OFF");
-}
-  //display.display(); //write display buffer
-  */
-}
-//TEMP UPDATE FUNCTION------------------------------------------------------------------------------------------------------------------------------------
 void updateTemp(){
   
   float temperature;
@@ -395,10 +183,9 @@ void updateTemp(){
   display.drawString(48, 45, (stringVal));
   
   // Check for Alert
-  alertPinState = digitalRead(ALERT_PIN); // read the Alert from pin
+  alertPinState = digitalRead(alertPin); // read the Alert from pin
   alertRegisterState = sensor0.alert();   // read the Alert from register
-
-
+  
   /*
   // Print temperature and alarm state
   Serial.print("Temperature: ");
@@ -411,7 +198,7 @@ void updateTemp(){
   Serial.println(alertRegisterState);
   */
 }
-//function to extract decimal part of float
+//function to extract decimal part of float (SUB ROUTINE OF TEMP UPDATE)
 long getDecimal(float val)
 {
   int intPart = int(val);
@@ -421,4 +208,98 @@ long getDecimal(float val)
   else if(decPart<0)return((-1)*decPart); //if negative, multiply by -1
   else if(decPart=0)return(00);           //return 0 if decimal part of float number is not available
 }
-//----------------------------------------------------------------------------------------
+//FAUXMO CALLBACK FUNCTION add devices here
+//------------------------------------------------------------------------------------------------
+void callback(uint8_t device_id, const char * device_name, bool state) {
+  Serial.printf("[MAIN] %s state: %s\n", device_name, state ? "ON" : "OFF");
+  
+
+//ZONE 1
+  if ( (strcmp(device_name, "Zone A1") == 0) ) {
+    if (state) {
+      mcp.digitalWrite(relayPin_K1, LOW); //TURN ON RELAY
+    } else {
+      mcp.digitalWrite(relayPin_K1, HIGH); //TURN OFF RELAY
+    }
+  }
+//ZONE 2
+  if ( (strcmp(device_name, "Zone A2") == 0) ) {
+    if (state) {
+      mcp.digitalWrite(relayPin_K2, LOW); //TURN ON RELAY
+    } else {
+      mcp.digitalWrite(relayPin_K2, HIGH); //TURN OFF RELAY
+    }
+  }
+//ZONE 3
+  if ( (strcmp(device_name, "Zone A3") == 0) ) { 
+    if (state) {
+      mcp.digitalWrite(relayPin_K3, LOW); //TURN ON RELAY
+    } else {
+      mcp.digitalWrite(relayPin_K3, HIGH); //TURN OFF RELAY
+    }
+  }
+//ZONE 4
+  if ( (strcmp(device_name, "Zone A4") == 0) ) {
+    if (state) {
+      mcp.digitalWrite(relayPin_K4, LOW); //TURN ON RELAY
+    } else {
+      mcp.digitalWrite(relayPin_K4, HIGH); //TURN OFF RELAY
+    }
+  }
+//ZONE 5
+  if ( (strcmp(device_name, "Zone A5") == 0) ) {
+    if (state) {
+      mcp.digitalWrite(relayPin_K5, LOW); //TURN ON RELAY
+    } else {
+      mcp.digitalWrite(relayPin_K5, HIGH); //TURN OFF RELAY
+    }
+  } 
+//ZONE 6
+  if ( (strcmp(device_name, "Zone A6") == 0) ) {
+    if (state) {
+      mcp.digitalWrite(relayPin_K6, LOW); //TURN ON RELAY
+    } else {
+      mcp.digitalWrite(relayPin_K6, HIGH); //TURN OFF RELAY
+    }
+  }  
+//ZONE 7
+  if ( (strcmp(device_name, "Zone A7") == 0) ) {
+    if (state) {
+      mcp.digitalWrite(relayPin_K7, LOW); //TURN ON RELAY
+    } else {
+      mcp.digitalWrite(relayPin_K7, HIGH); //TURN OFF RELAY
+    }
+  }
+//ZONE 8
+  if ( (strcmp(device_name, "Zone A8") == 0) ) {
+    if (state) {
+      mcp.digitalWrite(relayPin_K8, LOW); //TURN ON RELAY
+    } else {
+      mcp.digitalWrite(relayPin_K8, HIGH); //TURN OFF RELAY
+    }
+  }
+} // end function
+
+// WIFI setup function
+//------------------------------------------------------------------------------------------------
+
+void wifiSetup() {
+  // Set WIFI module to STA mode
+  WiFi.mode(WIFI_STA);
+
+  // Connect
+  Serial.printf("[WIFI] Connecting to %s ", WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+  // Wait
+  while (WiFi.status() != WL_CONNECTED) {
+      Serial.print(".");
+      delay(100);
+  }
+  Serial.println();
+
+  // Connected!
+  Serial.printf("[WIFI] STATION Mode, SSID: %s, IP address: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+}
+//------------------------------------------------------------------------------------------------
+
