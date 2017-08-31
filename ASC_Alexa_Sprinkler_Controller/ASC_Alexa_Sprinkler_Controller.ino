@@ -8,7 +8,7 @@
  * GitHub: https://github.com/ramseygill/alexa-sprinkler
  * ===============================================================================================
  * NOTES, Credit, Sources, and Props
- * TIME EXAMPLE:http://www.geekstips.com/arduino-time-sync-ntp-server-esp8266-udp/
+ * NTP Library:https://github.com/arduino-libraries/NTPClient
  * Adafruit-MCP23017-Arduino-Library
  * Copyright (c) 2012, Adafruit Industries All rights reserved.
  * https://github.com/adafruit/Adafruit-MCP23017-Arduino-Library/blob/master/license.txt
@@ -21,16 +21,18 @@
 #include "SSD1306.h"            // SSD1306 OLED display 
 #include "Adafruit_MCP23017.h"  // Adafruit-MCP23017-Arduino-Library, GPIO EXPANDER
 #include "SparkFunTMP102.h"     // TMP102 I2C temperature sensor 
-#include "fauxmoESP.h"          // Alexa suppport (fake WeMo devices)
+#include "fauxmoESP.h"          // Alexa suppport. (fake WeMo devices)
+#include <NTPClient.h>          // Supports NTP server time queries. 
+#include <WiFiUdp.h>            // Adds UDP protocol support, required by NTP service.
 
 //------------------------------------------------------------------------------------------------
 //VARIABLES AND GLOBALS
 //------------------------------------------------------------------------------------------------
 
-// PIN DEFINITIONS
-const int I2C_SDA = 0;      //I2C bus data pin (SCL).
-const int I2C_SCL = 14;     //I2C bus clock pin (SCL).
-const int alertPin = 5;     //TMP102 alert pin. ESP8266 Pin 
+// PIN DEFINITION CONSTANTS
+const int I2C_SDA = 0;      //I2C bus data pin (SCL). ESP-12E "D3" GPIO0
+const int I2C_SCL = 14;     //I2C bus clock pin (SCL). ESP-12E "D5" GPIO14
+const int alertPin = 5;     //TMP102 alert pin. ESP8266 "D1" GPIO5
 const int relayPin_K1 = 0;  //K1 relay control pin. MCP23017 Pin 21/GPA0
 const int relayPin_K2 = 1;  //K2 relay control pin. MCP23017 Pin 22/GPA1
 const int relayPin_K3 = 2;  //K3 relay control pin. MCP23017 Pin 23/GPA2
@@ -40,16 +42,25 @@ const int relayPin_K6 = 5;  //K6 relay control pin. MCP23017 Pin 26/GPA5
 const int relayPin_K7 = 6;  //K7 relay control pin. MCP23017 Pin 27/GPA6
 const int relayPin_K8 = 7;  //K8 relay control pin. MCP23017 Pin 28/GPA7
 
-// GLOBAL DEFS
-#define WIFI_SSID "skynet-2GHz" //your wifi SSID
-#define WIFI_PASS "haxor1337"   //your wifi password 
-#define SERIAL_BAUDRATE 115200  //Set USB serial baud rate
+// GLOBAL CONSTANTS
+const char *ssid     = "skynet-2GHz";   // WIFI network you want to connect to.
+const char *password = "haxor1337";     // WIFI network password.
+const int baudRate = 115200;            // USB serial baud rate. (DEBUG)
 
 // LIBRARY INITIALIZATION
 SSD1306  display(0x3c, I2C_SDA, I2C_SCL); // SSD1306 Pin Assignments
 fauxmoESP fauxmo;                         // Initialize fauxmo
 TMP102 sensor0(0x48);                     // Initialize sensor at I2C address 0x48
 Adafruit_MCP23017 mcp;                    // Adafruit-MCP23017-Arduino-Library
+WiFiUDP ntpUDP;                           // Initalize WifiUDP library
+
+// By default 'time.nist.gov' is used with 60 seconds update interval and no offset
+// Seattle is UTC-7 or -25200 seconds.
+// Update interval is one minute or 60000 miliseconds.
+// You can specify the time server pool and the offset (in seconds, can be
+// changed later with setTimeOffset() ). Additionaly you can specify the
+// update interval (in milliseconds, can be changed using setUpdateInterval() ).
+NTPClient timeClient(ntpUDP,"0.us.pool.ntp.org", -25200, 60000); 
 
 
 //------------------------------------------------------------------------------------------------
@@ -89,7 +100,7 @@ void setup() {
   fauxmo.addDevice("Zone A6");
   fauxmo.addDevice("Zone A7");
   fauxmo.addDevice("Zone A8");
-  fauxmo.onMessage(callback); //function call?
+  fauxmo.onMessage(callback); //function call for fauxmo state check.
 
   
 //------------TMP102 Setup----------------------------------------------------------
@@ -125,29 +136,19 @@ void setup() {
 
 
 //------------USB Serial Comms Setup -----------------------------------------------
-  Serial.begin(SERIAL_BAUDRATE);                     //start UART seral comm at global deff baudrate
+  Serial.begin(baudRate);                            //start UART serial comm at global deff baudrate
   Serial.println();                                  // add two blank lines
   Serial.println();
   Serial.println("ALEXA Sprinkler Controller V1.0"); //vanity title for serial window
 //----------------------------------------------------------------------------------
 
- wifiSetup();
-}
- 
-//------------------------------------------------------------------------------------------------
-//MAIN LOOP
-//------------------------------------------------------------------------------------------------
-void loop() {
-  display.clear();     // wipe display clean to refresh it
-  updateIP();          // function call for display update
-  updateTemp();        // fuction call for TMP102 temp 
-  display.display();   // write display buffer
-  fauxmo.handle();     // call fauxmo device function
-  delay(10);           // loop governor, determine how fast this loop runs
+//------------WiFi Setup------------------------------------------------------------
+ wifiSetup();     // Function call to kick off WiFi setup. 
+//----------------------------------------------------------------------------------
 }
 
 //------------------------------------------------------------------------------------------------
-//FUNCTIONS
+//FUNCTIONS (SUBROUTINES)
 //------------------------------------------------------------------------------------------------
 
 //UPDATE IP FUNCTION
@@ -156,10 +157,21 @@ void updateIP(){
   String ipaddress = WiFi.localIP().toString(); // convert IP address array to string
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 0, "IP Address");
-  display.drawString(0, 15, (ipaddress));
+  display.drawString(0, 0, "IP:");
+  display.drawString(18, 0, (ipaddress));
 }
-//TEMP UPDATE FUNCTION (SHITSHOW CODE, BUT IT WORKS)
+//UPDATE TIME FUNCTION
+//------------------------------------------------------------------------------------------------
+
+void updateTime(){
+  timeClient.update(); // Requests time update from NTP server
+  String timeString = timeClient.getFormattedTime(); // convert time to string
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 16, "TIME:");
+  display.drawString(45, 16, (timeString));
+}
+//UPDATE TEMP FUNCTION (SHITSHOW CODE, BUT IT WORKS)
 //------------------------------------------------------------------------------------------------
 
 void updateTemp(){
@@ -184,9 +196,9 @@ void updateTemp(){
   
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_16);
-  display.drawString(0, 45, "TEMP:");
-  display.drawString(80, 45, "F");
-  display.drawString(48, 45, (stringVal));
+  display.drawString(0, 32, "TEMP:");
+  display.drawString(80, 32, "F");
+  display.drawString(48, 32, (stringVal));
   
   // Check for Alert
   alertPinState = digitalRead(alertPin); // read the Alert from pin
@@ -200,7 +212,7 @@ void updateTemp(){
   Serial.print("\tAlert Pin: ");
   Serial.print(alertPinState);
   
-  Serial.print("\tAlert Register: ");
+  Serial.print("\tAlert Register:  ");
   Serial.println(alertRegisterState);
   */
 }
@@ -294,8 +306,8 @@ void wifiSetup() {
   WiFi.mode(WIFI_STA);
 
   // Connect
-  Serial.printf("[WIFI] Connecting to %s ", WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.printf("[WIFI] Connecting to %s ", ssid);
+  WiFi.begin(ssid, password);
 
   // Wait
   while (WiFi.status() != WL_CONNECTED) {
@@ -303,9 +315,24 @@ void wifiSetup() {
       delay(100);
   }
   Serial.println();
-
+  
+  timeClient.begin(); // start NTP time client
+ 
   // Connected!
   Serial.printf("[WIFI] STATION Mode, SSID: %s, IP address: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+}
+
+//------------------------------------------------------------------------------------------------
+//MAIN LOOP
+//------------------------------------------------------------------------------------------------
+void loop() {
+  display.clear();     // wipe display clean to refresh it
+  updateIP();          // function call for display update
+  updateTemp();        // fuction call for TMP102 temp
+  updateTime();
+  fauxmo.handle();     // call fauxmo device function
+  display.display();   // write display buffer
+  delay(10);           // loop governor, determine how fast this loop runs
 }
 //------------------------------------------------------------------------------------------------
 
