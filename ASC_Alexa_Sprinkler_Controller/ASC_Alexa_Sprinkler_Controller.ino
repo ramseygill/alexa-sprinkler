@@ -62,7 +62,6 @@ WiFiUDP ntpUDP;                           // Initalize WifiUDP library
 // update interval (in milliseconds, can be changed using setUpdateInterval() ).
 NTPClient timeClient(ntpUDP, "0.us.pool.ntp.org", -25200, 60000);
 
-
 //------------------------------------------------------------------------------------------------
 //SETUP
 //------------------------------------------------------------------------------------------------
@@ -144,7 +143,6 @@ void setup() {
   sensor0.setLowTempF(76.0);  // set T_LOW in F
   //sensor0.setLowTempC(26.67); // set T_LOW in C
   //----------------------------------------------------------------------------------
-
 
   //------------USB Serial Comms Setup -----------------------------------------------
   Serial.begin(baudRate);                            //start UART serial comm at global deff baudrate
@@ -333,9 +331,9 @@ void wifiSetup() {
   Serial.printf("[WIFI] STATION Mode, SSID: %s, IP address: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
 }
 
-//------------------------------------------------------------------------------------------------
+//================================================================================================
 //MAIN LOOP
-//------------------------------------------------------------------------------------------------
+//================================================================================================
 void loop() {
   display.clear();     // wipe display clean to refresh it
   updateIP();          // function call for display update
@@ -345,5 +343,5 @@ void loop() {
   display.display();   // write display buffer
   delay(10);           // loop governor, determine how fast this loop runs
 }
-//------------------------------------------------------------------------------------------------
+//================================================================================================
 
